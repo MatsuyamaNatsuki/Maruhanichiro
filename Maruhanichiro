@@ -1,0 +1,186 @@
+# 商品データのあるリンクを取得するコード
+
+# https://www.maruha-nichiro.co.jp/products/prodlist?c=14　までの配下にあることを確認。
+# "https://www.maruha-nichiro.co.jp/products/product?j=4902165350579"のような形が、
+# li,a,hrefの中にあることを確認。
+
+url_maruha = "https://www.maruha-nichiro.co.jp/products/prodlist?c="
+url_list=[]
+
+for i in range(1,14):
+
+
+
+    name = str(i)
+    time.sleep(5)
+    res2 = requests.get(url_maruha+name)
+
+    soup2 = BeautifulSoup(res2.content, 'html.parser')
+
+    for i in soup2.find_all("li"): 
+
+      try:
+
+        if "/product?j=" in i.find("a")["href"]:
+          i = i.find("a")
+          #if (("category" in i["href"])|("series" in i["href"])):
+          url_list.append(""+i["href"])
+
+      except:
+        pass
+
+url_list=sorted(list(set(url_list)))
+
+
+# スクレイピングのためのコード
+
+def catch_data(url_):
+    time.sleep(5)
+    res_in = requests.get(url_)
+    soup_in = BeautifulSoup(res_in.content, 'html.parser')
+    root = "https://www.maruha-nichiro.co.jp/"
+
+    # 商品名
+    
+    col_l=["item_name","url","img_url","商品説明","サイトカテゴリ","内容量","参考小売価格","JANコード","表示単位","エネルギー","タンパク質","脂質","炭水化物","ナトリウム","食塩相当量","カリウム","リン","カルシウム","生産工場または生産国","主な原材料の産地","本商品に含まれているアレルギー物質"]
+    val_l=[]
+    
+    # item_name
+    # titleには(商品名)｜冷凍食品｜商品情報｜マルハニチロが入っており、ここから抜き出していきます
+    
+    title = soup_in.find("title").text.replace('｜'," ")
+
+    title_list = title.split()
+
+    a = title_list[0]
+    b = title_list[1]
+    c = title_list[2]
+    d = b+'/'+c
+
+    val_l.append(a)
+
+    # url
+    
+    val_l.append(str(url_))
+
+    # img_url
+    
+    val_l.append(root + soup_in.find("div",{"class":"slide"}).find("img")["src"])
+
+    # 商品説明
+    
+    val_l.append(soup_in.find("div",{"class":"content"}).find("p").text.lstrip("\n").replace(" ",""))
+    # サイトカテゴリ
+    
+    val_l.append(b+"/"+c)
+    # 内容量,参考小売価格,JANコード
+    # list_内にある内容量,参考小売価格,JANコードを順にval_lに入れます
+    # <!>trioの後の" "を消さないでください!<!>
+    list_ = soup_in.find(class_= "tableContainer trio ").find_all("dd")
+
+    for i in list_:
+        i = i.text
+        val_l.append(i)
+    #print(list_)
+    # 表示単位
+    
+    list_ = soup_in.find(class_ = "tableCaption")
+    list_ = list_.text.replace('<'," ").replace('>'," ")
+    list__= list_.split()
+    unit = list__[0]
+    val_l.append(unit.lstrip("[").rstrip("]"))
+
+    # エネルギー,タンパク質,脂質,炭水化物,ナトリウム,食塩相当量
+    # list_内にあるエネルギー,タンパク質,脂質,炭水化物,ナトリウム,食塩相当量を順にval_lに入れます
+    
+    list_ = soup_in.find(class_= "tableContainer trio double-in-sp").find_all("dd")
+    
+    for i in list_:
+        i = i.text
+        val_l.append(i)
+        
+    # その他成分
+    # カリウム、リン、カルシウム
+    
+    mineral = soup_in.find("p",{"class":"tableFoot"}).text.replace(":"," ").replace("、"," ").split()
+
+    counter = 0
+    flag = 0
+    for i in mineral:
+        counter += 1
+        if ('カリウム'in i):
+            val_l.append(mineral[counter])
+            flag +=1  
+    
+        if ('リン' in i ):
+            val_l.append(mineral[counter])
+            flag += 1
+        
+        if ('カルシウム' in i):
+            val_l.append(mineral[counter])
+            flag += 1
+        
+    if flag == 1:
+        val_l.append("-")
+        val_l.append("-")
+    
+    if flag == 2:
+        val_l.append("-")
+    
+    
+    # 生産工場または生産国,主な原材料の産地
+    
+    list__ = soup_in.find_all("dl",style = "")
+    list_factory = []
+
+    for i in list__:
+        i = i.text
+        list_factory.append(i)
+    # 整形
+    for i in list_factory:
+        if ('\n\n' in i):
+            # a が生産工場または生産国
+            a = i.replace("\n\n","").replace(" ","")
+    
+    list_farm = []
+    for i in list_factory:
+        if ('〔' in i):
+            # 産地には'〔'がついているため
+            list_farm.append(i)
+    b = ""
+    # bが主な原材料の産地、文字列として","で連結します
+    for i in list_farm:
+        b += i
+        b += ","
+
+    # 生産工場または生産国
+    
+    val_l.append(a.rstrip("\n\n"))
+   
+    # 主な原材料の産地
+    
+    val_l.append(b.rstrip(","))
+    
+    
+    # 本商品に含まれているアレルギー物質
+    # アレルギーの部分は"html.parser"では取得できないため、"lxml"で取得しています
+    
+    res3 = requests.get(url_)
+    time.sleep(5)
+    soup = BeautifulSoup(res3.text, 'lxml')
+    allergy = []
+    for i in soup.find_all("td",{"class":"on"}):
+        allergy.append(i.text)
+    # "class"が"on"のアレルギー物質をリストallergyに入れ、取り出して一つの文字列に連結します(","で繋ぎ、右端の","は消す)
+    alle = ""
+    for i in allergy:
+        alle += i
+        alle += ","
+    
+    val_l.append(alle.rstrip(","))
+    #print(val_l)
+    
+    # データフレーム化
+    df=pd.DataFrame({"content":val_l},index=col_l).T
+    #df=pd.DataFrame({"content":val_l},index=col_l)
+    return df
